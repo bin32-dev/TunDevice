@@ -1,0 +1,8 @@
+/home/sabbir/Documents/TUN/build/CMakeFiles/tunlib.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/clean-all.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/edit_cache.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/rebuild_cache.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/list_install_components.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/install.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/install/local.dir
+/home/sabbir/Documents/TUN/build/CMakeFiles/install/strip.dir

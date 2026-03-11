@@ -1,0 +1,49 @@
+name: Build and Release TunLib
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake ..
+
+    - name: Build library
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: Package library
+      run: |
+        mkdir release
+        cp build/libtunlib.so* release/
+        cp -r include release/include
+
+    - name: Create archive
+      run: |
+        tar -czvf tunlib-linux-x86_64.tar.gz release
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: tunlib-linux-x86_64.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
