@@ -1,51 +1,85 @@
-#include "tun_device.hpp"
 #include "tun_c.h"
 
-using namespace tunlib;
+#include "tun_device.hpp"
 
-struct tun_device
-{
-    TunDevice* dev;
+#include <new>
+
+struct tun_device {
+    tunlib::TunDevice* impl;
 };
 
-tun_device* tun_create(const char* name)
-{
-    tun_device* t = new tun_device;
+extern "C" {
 
-    t->dev = new TunDevice();
-
-    if (!t->dev->openDevice(name))
-    {
-        delete t->dev;
-        delete t;
+tun_device* tun_create(const char* name) {
+    tun_device* handle = new (std::nothrow) tun_device{};
+    if (handle == nullptr) {
         return nullptr;
     }
 
-    return t;
+    handle->impl = new (std::nothrow) tunlib::TunDevice();
+    if (handle->impl == nullptr) {
+        delete handle;
+        return nullptr;
+    }
+
+    const char* safeName = (name == nullptr) ? "" : name;
+    if (!handle->impl->openDevice(safeName)) {
+        delete handle->impl;
+        delete handle;
+        return nullptr;
+    }
+
+    return handle;
 }
 
-int tun_set_ip(tun_device* t, const char* ip)
-{
-    return t->dev->setIPAddress(ip);
+int tun_set_ip(tun_device* dev, const char* ip_cidr) {
+    if (dev == nullptr || dev->impl == nullptr || ip_cidr == nullptr) {
+        return 0;
+    }
+    return dev->impl->setIPAddress(ip_cidr) ? 1 : 0;
 }
 
-int tun_up(tun_device* t)
-{
-    return t->dev->bringUp();
+int tun_up(tun_device* dev) {
+    if (dev == nullptr || dev->impl == nullptr) {
+        return 0;
+    }
+    return dev->impl->bringUp() ? 1 : 0;
 }
 
-int tun_read(tun_device* t, uint8_t* buf, size_t size)
-{
-    return t->dev->readPacket(buf, size);
+int tun_read(tun_device* dev, uint8_t* buffer, size_t size) {
+    if (dev == nullptr || dev->impl == nullptr) {
+        return -1;
+    }
+    return dev->impl->readPacket(buffer, size);
 }
 
-int tun_write(tun_device* t, const uint8_t* buf, size_t size)
-{
-    return t->dev->writePacket(buf, size);
+int tun_write(tun_device* dev, const uint8_t* buffer, size_t size) {
+    if (dev == nullptr || dev->impl == nullptr) {
+        return -1;
+    }
+    return dev->impl->writePacket(buffer, size);
 }
 
-void tun_close(tun_device* t)
-{
-    delete t->dev;
-    delete t;
+void tun_close(tun_device* dev) {
+    if (dev == nullptr) {
+        return;
+    }
+    delete dev->impl;
+    delete dev;
 }
+
+const char* tun_name(const tun_device* dev) {
+    if (dev == nullptr || dev->impl == nullptr) {
+        return nullptr;
+    }
+    return dev->impl->name().c_str();
+}
+
+const char* tun_last_error(const tun_device* dev) {
+    if (dev == nullptr || dev->impl == nullptr) {
+        return nullptr;
+    }
+    return dev->impl->lastError().c_str();
+}
+
+} // extern "C"
