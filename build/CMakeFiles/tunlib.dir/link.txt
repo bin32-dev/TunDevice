@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC -Wl,--dependency-file=CMakeFiles/tunlib.dir/link.d -shared -Wl,-soname,libtunlib.so.1 -o /home/sabbir/Documents/TUN/lib/libtunlib.so.1.0 CMakeFiles/tunlib.dir/src/tun_device.cpp.o CMakeFiles/tunlib.dir/src/tun_c.cpp.o
