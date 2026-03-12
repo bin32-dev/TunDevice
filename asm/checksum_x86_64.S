@@ -1,4 +1,4 @@
-    .text
+    .section .text.packet_checksum32,"ax",@progbits
     .globl packet_checksum32
     .type packet_checksum32, @function
 packet_checksum32:

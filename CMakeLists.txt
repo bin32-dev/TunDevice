@@ -25,7 +25,8 @@ add_executable(tun_proxy_ui
 )
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    target_sources(tun_proxy_ui PRIVATE src/checksum_x86_64.S)
+    target_sources(tun_proxy_ui PRIVATE asm/checksum_x86_64.S)
+    target_link_options(tun_proxy_ui PRIVATE -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/asm/tun_proxy_linker.ld)
     target_compile_definitions(tun_proxy_ui PRIVATE TUNPROXY_HAVE_ASM_CHECKSUM=1)
 else()
     target_sources(tun_proxy_ui PRIVATE src/checksum_fallback.c)
