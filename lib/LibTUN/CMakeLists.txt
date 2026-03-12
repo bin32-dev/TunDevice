@@ -1,16 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(TunDevice VERSION 1.0.0 LANGUAGES C CXX)
-
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+project(LibTUN VERSION 1.0.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
+
+option(TUNLIB_ENABLE_DOCS "Enable Doxygen documentation target" ON)
 
 add_library(tunlib SHARED
     src/tun_device.cpp
@@ -25,6 +19,7 @@ target_include_directories(tunlib
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+target_compile_features(tunlib PUBLIC cxx_std_17)
 target_compile_options(tunlib PRIVATE -Wall -Wextra -Wpedantic)
 
 set_target_properties(tunlib PROPERTIES
@@ -33,13 +28,7 @@ set_target_properties(tunlib PROPERTIES
     SOVERSION 1
 )
 
-add_executable(tun_cpp_example examples/cpp_signal_safe_example.cpp)
-target_link_libraries(tun_cpp_example PRIVATE tunlib)
-
-add_executable(tun_c_example examples/c_signal_safe_example.c)
-target_link_libraries(tun_c_example PRIVATE tunlib)
-
-install(TARGETS tunlib tun_cpp_example tun_c_example
+install(TARGETS tunlib
     EXPORT TunDeviceTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -54,28 +43,23 @@ install(EXPORT TunDeviceTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/TunDevice
 )
 
-find_package(Doxygen QUIET)
-if(DOXYGEN_FOUND)
-    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in)
-    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+if(TUNLIB_ENABLE_DOCS)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in)
+        set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 
-    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+        configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
 
-    add_custom_target(doc
-        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Generating HTML documentation with Doxygen"
-        VERBATIM
-    )
-else()
-    add_custom_target(doc
-        COMMAND ${CMAKE_COMMAND} -E echo "Doxygen not found: install doxygen to build docs"
-    )
+        add_custom_target(doc
+            COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "Generating HTML documentation with Doxygen"
+            VERBATIM
+        )
+    else()
+        add_custom_target(doc
+            COMMAND ${CMAKE_COMMAND} -E echo "Doxygen not found: install doxygen to build docs"
+        )
+    endif()
 endif()
-
-configure_file(cmake/cmake_uninstall.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
-    IMMEDIATE @ONLY)
-
-add_custom_target(uninstall
-    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
