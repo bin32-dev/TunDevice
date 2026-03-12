@@ -12,6 +12,15 @@
 
 #define PACKET_SIZE 4096
 
+typedef struct cli_options {
+    char tun_if_name[64];
+    char tun_ip[64];
+    char proxy_host[128];
+    unsigned short proxy_port;
+    proxy_protocol protocol;
+    char http_path[128];
+} cli_options;
+
 static volatile sig_atomic_t g_stop = 0;
 
 static void on_signal(int signum) {
@@ -56,38 +65,96 @@ static void live_log(const char* tag, const char* fmt, ...) {
     fflush(stdout);
 }
 
-int main(void) {
-    char tun_if_name[64];
-    char tun_ip[64];
-    char proxy_host[128];
-    char proxy_port_str[16];
+static void print_usage(const char* prog) {
+    fprintf(stderr,
+            "Usage: %s [--tun <name>] [--cidr <ip/cidr>] [--proxy <host>] [--port <num>]\\n"
+            "          [--protocol <http|binary>] [--http-path <path>]\\n",
+            prog);
+}
 
-    if (!read_line("TUN interface name (example: tun0): ", tun_if_name, sizeof(tun_if_name))) {
-        return 1;
-    }
-    if (!read_line("TUN IPv4 CIDR (example: 10.20.0.1/24): ", tun_ip, sizeof(tun_ip))) {
-        return 1;
-    }
-    if (!read_line("Proxy host (example: 127.0.0.1): ", proxy_host, sizeof(proxy_host))) {
-        return 1;
-    }
-    if (!read_line("Proxy port (example: 8080): ", proxy_port_str, sizeof(proxy_port_str))) {
-        return 1;
+static int parse_cli(int argc, char** argv, cli_options* opts) {
+    memset(opts, 0, sizeof(*opts));
+    opts->protocol = PROXY_PROTOCOL_HTTP;
+    snprintf(opts->http_path, sizeof(opts->http_path), "/");
+
+    for (int i = 1; i < argc; ++i) {
+        const char* arg = argv[i];
+        if (strcmp(arg, "--tun") == 0 && i + 1 < argc) {
+            snprintf(opts->tun_if_name, sizeof(opts->tun_if_name), "%s", argv[++i]);
+        } else if (strcmp(arg, "--cidr") == 0 && i + 1 < argc) {
+            snprintf(opts->tun_ip, sizeof(opts->tun_ip), "%s", argv[++i]);
+        } else if (strcmp(arg, "--proxy") == 0 && i + 1 < argc) {
+            snprintf(opts->proxy_host, sizeof(opts->proxy_host), "%s", argv[++i]);
+        } else if (strcmp(arg, "--port") == 0 && i + 1 < argc) {
+            const unsigned long p = strtoul(argv[++i], NULL, 10);
+            if (p == 0UL || p > 65535UL) {
+                fprintf(stderr, "Invalid --port value.\\n");
+                return -1;
+            }
+            opts->proxy_port = (unsigned short) p;
+        } else if (strcmp(arg, "--protocol") == 0 && i + 1 < argc) {
+            const char* value = argv[++i];
+            if (strcmp(value, "http") == 0) {
+                opts->protocol = PROXY_PROTOCOL_HTTP;
+            } else if (strcmp(value, "binary") == 0) {
+                opts->protocol = PROXY_PROTOCOL_BINARY;
+            } else {
+                fprintf(stderr, "Invalid --protocol value (use http|binary).\\n");
+                return -1;
+            }
+        } else if (strcmp(arg, "--http-path") == 0 && i + 1 < argc) {
+            snprintf(opts->http_path, sizeof(opts->http_path), "%s", argv[++i]);
+        } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
+            print_usage(argv[0]);
+            return 1;
+        } else {
+            fprintf(stderr, "Unknown/incomplete argument: %s\\n", arg);
+            print_usage(argv[0]);
+            return -1;
+        }
     }
 
-    const unsigned long parsed_port = strtoul(proxy_port_str, NULL, 10);
-    if (parsed_port == 0UL || parsed_port > 65535UL) {
-        fprintf(stderr, "Invalid proxy port.\n");
-        return 1;
+    if (opts->tun_if_name[0] == '\0' &&
+        !read_line("TUN interface name (example: tun0): ", opts->tun_if_name, sizeof(opts->tun_if_name))) {
+        return -1;
+    }
+    if (opts->tun_ip[0] == '\0' && !read_line("TUN IPv4 CIDR (example: 10.20.0.1/24): ", opts->tun_ip, sizeof(opts->tun_ip))) {
+        return -1;
+    }
+    if (opts->proxy_host[0] == '\0' &&
+        !read_line("Proxy host (example: 127.0.0.1): ", opts->proxy_host, sizeof(opts->proxy_host))) {
+        return -1;
+    }
+    if (opts->proxy_port == 0U) {
+        char proxy_port_str[16];
+        if (!read_line("Proxy port (example: 8080): ", proxy_port_str, sizeof(proxy_port_str))) {
+            return -1;
+        }
+        const unsigned long parsed_port = strtoul(proxy_port_str, NULL, 10);
+        if (parsed_port == 0UL || parsed_port > 65535UL) {
+            fprintf(stderr, "Invalid proxy port.\n");
+            return -1;
+        }
+        opts->proxy_port = (unsigned short) parsed_port;
     }
 
-    tun_device* dev = tun_create(tun_if_name);
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    cli_options opts;
+    const int parse_rc = parse_cli(argc, argv, &opts);
+    if (parse_rc != 0) {
+        return parse_rc > 0 ? 0 : 1;
+    }
+
+    tun_device* dev = tun_create(opts.tun_if_name);
     if (dev == NULL) {
         fprintf(stderr, "Failed to create TUN device. Try running as root.\n");
         return 1;
     }
 
-    if (!tun_set_ip(dev, tun_ip)) {
+    if (!tun_set_ip(dev, opts.tun_ip)) {
         fprintf(stderr, "Failed to set IP: %s\n", tun_last_error(dev));
         tun_close(dev);
         return 1;
@@ -99,19 +166,29 @@ int main(void) {
         return 1;
     }
 
-    live_log("INFO", "TUN device ready: %s (%s)", tun_name(dev), tun_ip);
+    live_log("INFO", "TUN device ready: %s (%s)", tun_name(dev), opts.tun_ip);
     live_log("INFO", "Routing reminder: Linux will not use %s until you add route rules.", tun_name(dev));
     live_log("INFO", "Example: ip route add 0.0.0.0/1 dev %s && ip route add 128.0.0.0/1 dev %s", tun_name(dev), tun_name(dev));
 
-    int proxy_sock = -1;
+    proxy_connection conn;
     char err[256];
-    if (proxy_open_connection(proxy_host, (unsigned short) parsed_port, &proxy_sock, err, sizeof(err)) != 0) {
+    if (proxy_open_connection(opts.proxy_host,
+                              opts.proxy_port,
+                              opts.protocol,
+                              opts.http_path,
+                              &conn,
+                              err,
+                              sizeof(err)) != 0) {
         fprintf(stderr, "Failed to connect proxy server: %s\n", err);
         tun_close(dev);
         return 1;
     }
 
-    live_log("INFO", "Connected to proxy server %s:%lu", proxy_host, parsed_port);
+    live_log("INFO",
+             "Connected to proxy server %s:%hu (protocol=%s)",
+             opts.proxy_host,
+             opts.proxy_port,
+             opts.protocol == PROXY_PROTOCOL_HTTP ? "http" : "binary");
     live_log("INFO", "Packet forwarding loop is running. Press Ctrl+C to stop.");
 
     signal(SIGINT, on_signal);
@@ -131,7 +208,7 @@ int main(void) {
         const unsigned int checksum = packet_checksum32(packet, (size_t) read_rc);
         live_log("TUN->PROXY", "captured packet bytes=%d checksum32=%u", read_rc, checksum);
 
-        if (proxy_forward_packet(proxy_sock,
+        if (proxy_forward_packet(&conn,
                                  packet,
                                  (size_t) read_rc,
                                  response,
@@ -154,7 +231,7 @@ int main(void) {
         live_log("INFO", "packet forwarded successfully (%d bytes written)", write_rc);
     }
 
-    proxy_close_connection(&proxy_sock);
+    proxy_close_connection(&conn);
     tun_close(dev);
     live_log("INFO", "Tunnel session closed");
     return 0;
